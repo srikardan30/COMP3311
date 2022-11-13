@@ -1,0 +1,126 @@
+#!/usr/bin/python3
+
+# COMP3311 22T3 Assignment 2
+# Print info about one movie; may need to choose
+
+import sys
+import psycopg2
+import helpers
+
+### Globals
+
+db = None
+usage = f"Usage: {sys.argv[0]} 'PartialMovieName'"
+
+### Command-line args
+
+if len(sys.argv) < 2:
+   print(usage)
+   exit(1)
+
+# process the command-line args ...
+movie_name = sys.argv[1]
+
+### Queries
+
+validMovieCheck = '''
+select M.id, M.title, M.year
+from Movies M 
+where M.title ilike %s
+order by M.title, M.year
+'''
+
+getMovieFullName = '''
+select M.title, M.year
+from Movies M 
+where M.title ilike %s
+order by M.title, M.year
+'''
+
+getEveryone = '''
+select P.name, R.role, Pr.job
+from Movies M join Principals Pr on Pr.movie = M.id
+left join PlaysRole R on R.inMovie = Pr.id
+join People P on Pr.person = P.id
+where M.title ilike %s
+order by Pr.ord
+'''
+
+getEveryoneMultiple = '''
+select P.name, R.role, Pr.job
+from Movies M join Principals Pr on Pr.movie = M.id
+left join PlaysRole R on R.inMovie = Pr.id
+join People P on Pr.person = P.id
+where M.id = %s
+order by Pr.ord
+'''
+
+### Manipulating database
+
+try:
+   db = psycopg2.connect(dbname = "ass2")
+   cur = db.cursor()
+
+   #check string has any valid movies in database
+   cur.execute(validMovieCheck, ['%' + movie_name + '%'])
+   movies = cur.fetchall()
+   len_movie_exists = len(movies)
+
+   if len_movie_exists == 0:
+      print(f"No movie matching: '{movie_name}'")
+      exit(1)
+   elif len_movie_exists == 1:
+
+      #displays name of the movie 
+      cur.execute(getMovieFullName, ['%' + movie_name + '%'])
+      movie_fullname = cur.fetchone()
+      print(f"{movie_fullname[0]} ({movie_fullname[1]})")
+
+      cur.execute(getEveryone, ['%' + movie_name + '%'])
+      all_people = cur.fetchall()
+
+      for people in all_people:
+         if people[1] is None:
+            role = '???'
+         else:
+            role = people[1]
+
+         if people[2] == 'actor' or people[2] == 'actress' or people[2] == 'self':
+            print(f"{people[0]} plays {role}")
+         else:
+            print(f"{people[0]}: {people[2]}")
+
+   else:
+      #this is when there is more than 1 movie with that type of name 
+      i = 0
+      for movieName in movies:
+         i = i + 1
+         print(f"{i}. {movieName[1]} ({movieName[2]})")
+      
+      #open a command line option for user to input 
+      user_number = int(input("Which movie? "))
+      print(f"{movies[user_number - 1][1]} ({movies[user_number - 1][2]})")
+
+      #Get the movie ID of the chosen movie 
+      movie_id = movies[user_number - 1][0]
+
+      cur.execute(getEveryoneMultiple, [movie_id])
+      all_people_multiple = cur.fetchall()
+
+      for people in all_people_multiple:
+         if people[1] is None:
+            role = '???'
+         else:
+            role = people[1]
+
+         if people[2] == 'actor' or people[2] == 'actress' or people[2] == 'self':
+            print(f"{people[0]} plays {role}")
+         else:
+            print(f"{people[0]}: {people[2]}")
+
+
+except Exception as err:
+   print("DB error: ", err)
+finally:
+   if db:
+      db.close()
